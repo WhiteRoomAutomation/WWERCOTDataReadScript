@@ -1,0 +1,163 @@
+Me.readtrigger = false;
+
+Dim a as System.Net.Configuration.SettingsSection;
+a = new System.Net.Configuration.SettingsSection();
+Dim aNetAssembly As System.Reflection.Assembly;
+aNetAssembly = System.Reflection.Assembly.GetAssembly(a.GetType());
+Dim aSettingsType As System.Type;
+aSettingsType = aNetAssembly.GetType("System.Net.Configuration.SettingsSectionInternal");
+Dim args As Object;
+
+Dim anInstance As Object;
+anInstance = aSettingsType.InvokeMember("Section", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.GetProperty | System.Reflection.BindingFlags.NonPublic, null, null, args);
+Dim aUseUnsafeHeaderParsing As System.Reflection.FieldInfo;
+aUseUnsafeHeaderParsing = aSettingsType.GetField("useUnsafeHeaderParsing", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+aUseUnsafeHeaderParsing.SetValue(anInstance, True);
+
+
+dim WebClient as System.Net.WebClient;
+WebClient = new System.Net.WebClient();
+
+
+
+dim HTML as string;
+HTML = WebClient.DownloadString("http://www.ercot.com/content/cdr/html/real_time_spp");
+
+LogMessage(HTML);
+
+dim dt as System.Data.DataTable;
+dim dr as System.Data.DataRow;
+dim dc as System.Data.DataColumn;
+dim TableExpression as string;
+dim HeaderExpression as string;
+dim RowExpression as string;
+dim ColumnExpression as string;
+dim HeadersExist as boolean;
+dim iCurrentColumn as integer;
+dim iCurrentRow as integer;
+
+dt = null;  
+dr = null;  
+dc = null;  
+TableExpression = "<table[^>]*>(.*?)</table>";  
+HeaderExpression = "<th[^>]*>(.*?)</th>";  
+RowExpression = "<tr[^>]*>(.*?)</tr>";  
+ColumnExpression = "<td[^>]*>(.*?)</td>";  
+HeadersExist = false;  
+iCurrentColumn = 0;  
+iCurrentRow = 0;  
+
+dim Tables as System.Text.RegularExpressions.MatchCollection;
+  
+          ' Get a match for all the tables in the HTML    
+Tables = System.Text.RegularExpressions.Regex.Matches(HTML, TableExpression, System.Text.RegularExpressions.RegexOptions.Multiline | System.Text.RegularExpressions.RegexOptions.Singleline | System.Text.RegularExpressions.RegexOptions.IgnoreCase);  
+LogMessage("TABLES - " + Tables.Count);
+dim Table as System.Text.RegularExpressions.Match;
+          ' Loop through each table element    
+for each Table in Tables
+	iCurrentRow = 0;  
+	HeadersExist = false; 
+	dt = new System.Data.DataTable();
+		
+	if Table.Value.Contains("<th") then                  
+		dim Header as System.Text.RegularExpressions.Match;
+		HeadersExist = true;
+		dim Headers as System.Text.RegularExpressions.MatchCollection;                     
+		Headers = System.Text.RegularExpressions.Regex.Matches(Table.Value, HeaderExpression, System.Text.RegularExpressions.RegexOptions.Multiline | System.Text.RegularExpressions.RegexOptions.Singleline | System.Text.RegularExpressions.RegexOptions.IgnoreCase); 
+		
+		LogMessage("Headers - " + Headers.Count);
+		for each Header in Headers
+			dt.Columns.Add(Header.Groups[1].ToString());
+		NEXT;
+	else
+		dim iColumns as integer;
+		
+		dim iCount as integer;
+		iCount = System.Text.RegularExpressions.Regex.Matches(System.Text.RegularExpressions.Regex.Matches
+			(System.Text.RegularExpressions.Regex.Matches(Table.Value, TableExpression, 
+			System.Text.RegularExpressions.RegexOptions.Multiline | System.Text.RegularExpressions.RegexOptions.Singleline | System.Text.RegularExpressions.RegexOptions.IgnoreCase)[0].ToString(), RowExpression, 
+			System.Text.RegularExpressions.RegexOptions.Multiline | System.Text.RegularExpressions.RegexOptions.Singleline | System.Text.RegularExpressions.RegexOptions.IgnoreCase)[0].ToString(), ColumnExpression, 
+			System.Text.RegularExpressions.RegexOptions.Multiline | System.Text.RegularExpressions.RegexOptions.Singleline | System.Text.RegularExpressions.RegexOptions.IgnoreCase).Count;
+		
+		LogMessage("Count - " + iCount);
+		for iColumns = 1 to iCount
+			
+			dt.Columns.Add("Column " + iColumns);
+		next;
+	endif;
+	
+	LogMessage("Columns - " + dt.Columns.Count);
+
+	dim Rows as System.Text.RegularExpressions.MatchCollection;
+	dim Row as System.Text.RegularExpressions.Match;
+	Rows = System.Text.RegularExpressions.Regex.Matches(Table.Value, RowExpression, System.Text.RegularExpressions.RegexOptions.Multiline | System.Text.RegularExpressions.RegexOptions.Singleline | System.Text.RegularExpressions.RegexOptions.IgnoreCase);  
+	LogMessage("Rows - " + Rows.Count);
+	'Loop through each row element    
+	for each Row in Rows 
+
+	  ' Only loop through the row if it isn't a header row    
+		if not (iCurrentRow == 0 and HeadersExist == true) then	    
+
+		' Create a new row and reset the current column counter    
+			dr = dt.NewRow();  
+			iCurrentColumn = 0;
+			dim Columns as System.Text.RegularExpressions.MatchCollection;
+			dim Column as System.Text.RegularExpressions.Match;
+			
+		
+
+	      ' Get a match for all the columns in the row    
+			Columns = System.Text.RegularExpressions.Regex.Matches(Row.Value, ColumnExpression, System.Text.RegularExpressions.RegexOptions.Multiline | System.Text.RegularExpressions.RegexOptions.Singleline | System.Text.RegularExpressions.RegexOptions.IgnoreCase);  
+
+	      ' Loop through each column element    
+			for each Column in Columns
+			
+				dim columnsCollection as System.Data.DataColumnCollection;
+				columnsCollection = dt.Columns;  
+
+				if not columnsCollection.Contains("Column " + iCurrentColumn) then
+				    
+				      'Add Columns  
+				      dt.Columns.Add("Column " + iCurrentColumn);
+				endif;  
+				   
+				'Add the value to the DataRow    
+				dr[iCurrentColumn] = Column.Groups[1].ToString();  
+				'Increase the current column    
+				iCurrentColumn = iCurrentColumn + 1;  
+			next;
+
+		      'Add the DataRow to the DataTable    
+		      dt.Rows.Add(dr);  
+
+	  endif;  
+
+	  'Increase the current row counter    
+	  iCurrentRow = iCurrentRow + 1;  
+	NEXT;
+	LogMessage("ROWS - " + dt.Rows.Count);
+next;
+
+dim myDate as System.DateTime;
+dim myDateString as string;
+dim format as string;
+format = "MM/dd/yyyyHHmm";
+
+LogMessage(format);
+
+myDateString = dt.Rows.Item(dt.Rows.Count-1).Item("Oper Day") + dt.Rows.Item(dt.Rows.Count-1).Item("Interval Ending");
+LogMessage(myDateString);
+myDate = System.DateTime.ParseExact(myDateString,format,null,System.Globalization.DateTimeStyles.None);
+LogMessage(myDate);
+
+myDate = myDate.AddHours(-1);
+SetAttributeVT( Me.HB_BUSAVG, dt.Rows.Item(dt.Rows.Count-1).Item("HB_BUSAVG"), myDate );
+SetAttributeVT( Me.HB_SOUTH, dt.Rows.Item(dt.Rows.Count-1).Item("HB_SOUTH"), myDate );
+
+
+
+
+  
+			
+
+
